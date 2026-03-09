@@ -35,6 +35,17 @@ void execultar(char *cmd){
     parse(cmd,args);
 
     if(args[0]==NULL)return;
+
+    //printf("DEBUG args[0] = '%s'\n", args[0]); 
+
+    if(strcmp(args[0],"cd")==0){
+        char *dir=args[1];
+        if(dir==NULL)dir=getenv("HOME");
+        if(chdir(dir)<0){
+            perror("cd");
+        }
+        return;
+    }
     
     pid_t pid=fork();
     if(pid<0){
@@ -69,7 +80,7 @@ int main(){
             break;
         
         }
-       // printf("DEBUG linha: '%s'\n", line);
+       //printf("DEBUG linha: '%s'\n", line);
 
         //vai ignorar a linha vazia
         if (line[0]=='\n') continue;
