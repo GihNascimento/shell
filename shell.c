@@ -42,6 +42,10 @@ void parse(char *line,char **args,char **in,char **out,char **app){
     args[i]=NULL;
 }
 
+int tem_pipe(char *cmd){
+    return strchr(cmd,'|')!=NULL;
+}
+
 //vai execultar apenas um comando
 void execultar(char *cmd){
     char *args[MAX_ARGS];
@@ -95,6 +99,41 @@ void execultar(char *cmd){
     }
 
 }
+void execultar_pipe(char *cmd){
+    char *saveptr;
+    char *cmd1=__strtok_r(cmd,"|",&saveptr);
+    char *cmd2=__strtok_r(NULL,"|",&saveptr);
+
+    cmd1=trim(cmd1);
+    cmd2=trim(cmd2);
+
+    int fd[2];
+    if(pipe(fd)<0){
+        perror("pipe");
+        return;
+    }
+    pid_t pid1=fork();
+    if(pid1==0){
+        dup2(fd[1],1);
+        close(fd[0]);
+        close(fd[1]);
+        execultar(cmd1);
+        exit(0);
+    }
+    pid_t pid2=fork();
+    if(pid2==0){
+       dup2(fd[0],0);
+        close(fd[0]);
+        close(fd[1]);
+        execultar(cmd2);
+        exit(0);
+    }
+    close(fd[0]);
+    close(fd[1]);
+    waitpid(pid1,NULL,0);
+    waitpid(pid2,NULL,0);
+}
+
 
 
 int main(){
@@ -125,6 +164,8 @@ int main(){
         while(cmd!=NULL){
             char *t=trim(cmd);
             if (strlen(t)>0){
+                execultar_pipe(t);
+            }else{
                 execultar(t);
             }
             cmd=strtok_r(NULL,";",&saveptr);
