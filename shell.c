@@ -9,8 +9,19 @@
 #define MAX_CMD 4096
 #define MAX_ARGS 256
 
+typedef struct{
+    int id;
+    pid_t pid;
+    char cmd[256];
+    int ativo;
+}job;
+
+job jobs[64];
+int proximo_id=1;
+
 //vai remover os espaços do inicio e fim das strings
 char *trim(char *s){
+    if (s == NULL) return NULL;
     while (*s== ' ' || *s=='\t') s++;
     char *e=s+strlen(s)-1;
     while(e>s&& (*e== ' '||*e=='\t'|| *e=='\n'||*e=='\r'))
@@ -46,15 +57,51 @@ int tem_pipe(char *cmd){
     return strchr(cmd,'|')!=NULL;
 }
 
+int adicionar_job(pid_t pid,char *cmd){
+    for(int i=0;i<64;i++){
+        if(!jobs[i].ativo){
+            jobs[i].id =proximo_id++;
+            jobs[i].pid=pid;
+            jobs[i].ativo=1;
+            strncpy(jobs[i].cmd,cmd,255);
+            return jobs[i].id;
+        }
+    }
+    return -1;
+}
+
+void remover_job(pid_t pid){
+    for(int i=0;i<64;i++){
+        if (jobs[i].ativo && jobs[i].pid==pid)
+        jobs[i].ativo=0;
+    }
+}
+
+job *buscar_job(int id){
+    for(int i=0;i<64;i++){
+        if(jobs[i].ativo && jobs[i].id==id)
+            return &jobs[i];
+    }
+    return NULL;
+}
 //vai execultar apenas um comando
 void execultar(char *cmd){
     char *args[MAX_ARGS];
     char *in, *out, *app;
+
+    // verifica & ANTES do parse
+    int background=0;
+    cmd=trim(cmd);  // trim primeiro!
+    int len=strlen(cmd);
+    if (cmd[len-1]=='&') {
+        background=1;
+        cmd[len-1]='\0';
+        cmd=trim(cmd);
+    }
+
     parse(cmd, args, &in, &out, &app);
 
     if(args[0]==NULL)return;
-
-    //printf("DEBUG args[0] = '%s'\n", args[0]); 
 
     if(strcmp(args[0],"cd")==0){
         char *dir=args[1];
@@ -64,45 +111,53 @@ void execultar(char *cmd){
         }
         return;
     }
-    
+
+    fflush(stdout);
+
     pid_t pid=fork();
+
     if(pid<0){
         perror("fork");
         return;
     }
     if(pid==0){
-        if(in!=NULL){
-            int fd=open(in,O_RDONLY);
-            if(fd<0){perror(in);exit(1);}
+        if(in !=NULL){
+            int fd =open(in, O_RDONLY);
+            if(fd<0){ perror(in); exit(1); }
             dup2(fd,0);
             close(fd);
         }
-        if(app!=NULL){
-            int fd=open(app,O_WRONLY|O_CREAT|O_APPEND,0644);
-            if(fd<0){perror(app);exit(1);}
+        if(app !=NULL){
+            int fd =open(app,O_WRONLY|O_CREAT|O_APPEND, 0644);
+            if(fd <0){ perror(app);exit(1);}
             dup2(fd,1);
             close(fd);
         }
         else if(out !=NULL){
-            int fd=open(out,O_WRONLY|O_CREAT|O_TRUNC,0644);
-            if(fd<0){perror(out);exit(1);}
+            int fd =open(out,O_WRONLY|O_CREAT|O_TRUNC, 0644);
+            if(fd <0){perror(out);exit(1);}
             dup2(fd,1);
             close(fd);
         }
-
         execvp(args[0],args);
-        fprintf(stderr,"shell: %s: comando não encontrado\n",args[0]);
+        fprintf(stderr,"shell: %s: comando não encontrado\n", args[0]);
         exit(1);
     }
     else{
-        wait(NULL);
+        if(background) {
+            int jid = adicionar_job(pid, cmd);
+            printf("[%d] %d\n", jid, pid);
+            fflush(stdout);
+        } 
+        else {
+            waitpid(pid,NULL,0);
+        }
     }
-
 }
 void execultar_pipe(char *cmd){
     char *saveptr;
-    char *cmd1=__strtok_r(cmd,"|",&saveptr);
-    char *cmd2=__strtok_r(NULL,"|",&saveptr);
+    char *cmd1=strtok_r(cmd,"|",&saveptr);
+    char *cmd2=strtok_r(NULL,"|",&saveptr);
 
     cmd1=trim(cmd1);
     cmd2=trim(cmd2);
@@ -163,11 +218,26 @@ int main(){
         char *cmd=strtok_r(line, ";",&saveptr);
         while(cmd!=NULL){
             char *t=trim(cmd);
-            if (strlen(t)>0){
-                execultar_pipe(t);
-            }else{
-                execultar(t);
+            if(strncmp(t, "fg", 2)==0){
+                char *arg = trim(t+2);
+                int jid = atoi(arg);
+                job *j = buscar_job(jid);
+                if(j == NULL){
+                    fprintf(stderr, "shell: fg: job %d não encontrado\n", jid);
+                } else {
+                    waitpid(j->pid, NULL, 0);
+                    remover_job(j->pid);
+                }
+                cmd=strtok_r(NULL,";",&saveptr);
+                continue;
             }
+            if (strlen(t)>0){
+                 if(tem_pipe(t)){
+                execultar_pipe(t);
+             } else {
+                 execultar(t);
+            }
+    }
             cmd=strtok_r(NULL,";",&saveptr);
         }
     }
