@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 
 
 #define MAX_CMD 4096
@@ -18,13 +19,25 @@ char *trim(char *s){
 }
 
 //vai separar a linha em argumentos
-void parse(char *line,char**args){
+void parse(char *line,char **args,char **in,char **out,char **app){
+    
+    *in=NULL;
+    *out=NULL;
+    *app=NULL;
     int i=0;
     char *token =strtok(line," \t\n");
    
     while (token !=NULL){
-        args[i++]=token;
-        token= strtok(NULL," \t\n");
+        if(!strcmp(token, "<")){
+            *in=strtok(NULL, " \t\n");
+        }else if(!strcmp(token, ">>")){
+            *app=strtok(NULL, " \t\n");
+        }else if(!strcmp(token, ">")){
+            *out=strtok(NULL, " \t\n");
+        }else{
+            args[i++]=token;
+        }
+        token=strtok(NULL," \t\n");
     }
     args[i]=NULL;
 }
@@ -32,7 +45,8 @@ void parse(char *line,char**args){
 //vai execultar apenas um comando
 void execultar(char *cmd){
     char *args[MAX_ARGS];
-    parse(cmd,args);
+    char *in, *out, *app;
+    parse(cmd, args, &in, &out, &app);
 
     if(args[0]==NULL)return;
 
@@ -53,6 +67,25 @@ void execultar(char *cmd){
         return;
     }
     if(pid==0){
+        if(in!=NULL){
+            int fd=open(in,O_RDONLY);
+            if(fd<0){perror(in);exit(1);}
+            dup2(fd,0);
+            close(fd);
+        }
+        if(app!=NULL){
+            int fd=open(app,O_WRONLY|O_CREAT|O_APPEND,0644);
+            if(fd<0){perror(app);exit(1);}
+            dup2(fd,1);
+            close(fd);
+        }
+        else if(out !=NULL){
+            int fd=open(out,O_WRONLY|O_CREAT|O_TRUNC,0644);
+            if(fd<0){perror(out);exit(1);}
+            dup2(fd,1);
+            close(fd);
+        }
+
         execvp(args[0],args);
         fprintf(stderr,"shell: %s: comando não encontrado\n",args[0]);
         exit(1);
