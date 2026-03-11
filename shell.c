@@ -9,6 +9,8 @@
 #define MAX_CMD 4096
 #define MAX_ARGS 256
 
+int estilo_paralelo = 0;
+
 typedef struct{
     int id;
     pid_t pid;
@@ -197,7 +199,7 @@ int main(){
 
     while(1){
         //mostrar prompt
-        printf("myPrompt seq> ");
+        printf("myPrompt %s> ", estilo_paralelo ? "par" : "seq");
         fflush(stdout);
 
         //vai ler a linha digitada
@@ -229,6 +231,18 @@ int main(){
                     remover_job(j->pid);
                 }
                 cmd=strtok_r(NULL,";",&saveptr);
+                continue;
+            }
+            if(strncmp(t,"style",5)==0){
+                char *arg=trim(t+5);
+                if(strcmp(arg,"parallel")==0){
+                    estilo_paralelo=1;
+                }else if(strcmp(arg,"sequential")==0){
+                    estilo_paralelo=0;
+                }else{
+                    fprintf(stderr,"shell: style; argumento invalido '%s'\n",arg);
+                }
+                cmd=__strtok_r(NULL,";",&saveptr);
                 continue;
             }
             if (strlen(t)>0){
