@@ -266,6 +266,7 @@ int main(int argc,char *argv[]){
 
         while(cmd!=NULL){
             char *t=trim(cmd);
+            if(strncmp(t,"exit",4)==0) exit(0);
             if(strncmp(t, "fg", 2)==0){
                 char *arg = trim(t+2);
                 int jid = atoi(arg);
