@@ -193,10 +193,52 @@ void execultar_pipe(char *cmd){
 
 
 
-int main(){
+int main(int argc,char *argv[]){
     char line[MAX_CMD];
-    //char *args[MAX_ARGS];
 
+    if(argc>2){
+        fprintf(stderr,"Uso: shell [batchFile]\n");
+        exit(1);
+    }
+    if(argc==2){
+        FILE *fp=fopen(argv[1],"r");
+        if(fp==NULL){
+            fprintf(stderr, "Shell: não foi possivel abrir o arquivo '%s'\n",argv[1]);
+            exit(1);
+        }
+        while(fgets(line,sizeof(line),fp)){
+            char *t=trim(line);
+            if(strlen(t)==0)continue;
+            printf("%s\n",t);
+            fflush(stdout);
+
+            if(strncmp(t,"exit",4)==0)exit(0);
+
+            char *saveptr;
+            char *cmd=strtok_r(t,";",&saveptr);
+            pid_t pids_par[MAX_ARGS];
+            int n_par=0;
+            while(cmd!=NULL){
+                char *c=trim(cmd);
+                if(strlen(c)>0){
+                    if(tem_pipe(c)){
+                        execultar_pipe(c);
+                    }else{
+                        execultar(c);
+                    }
+                }
+                cmd=strtok_r(NULL,";",&saveptr);
+            }
+            for(int i=0; i<n_par; i++){
+                waitpid(pids_par[i],NULL,0);
+            }
+
+        }
+        fclose(fp);
+        return 0;
+    }
+
+    //char *args[MAX_ARGS];
     while(1){
         //mostrar prompt
         printf("myPrompt %s> ", estilo_paralelo ? "par" : "seq");
@@ -218,6 +260,10 @@ int main(){
         //divide a linha pelo ;
         char*saveptr;
         char *cmd=strtok_r(line, ";",&saveptr);
+        
+        pid_t pids_par[MAX_ARGS];
+        int n_par=0;
+
         while(cmd!=NULL){
             char *t=trim(cmd);
             if(strncmp(t, "fg", 2)==0){
@@ -242,18 +288,36 @@ int main(){
                 }else{
                     fprintf(stderr,"shell: style; argumento invalido '%s'\n",arg);
                 }
-                cmd=__strtok_r(NULL,";",&saveptr);
+                cmd=strtok_r(NULL,";",&saveptr);
                 continue;
             }
             if (strlen(t)>0){
-                 if(tem_pipe(t)){
-                execultar_pipe(t);
-             } else {
-                 execultar(t);
+                 if(estilo_paralelo){
+                    pid_t pid=fork();
+                    if(pid==0){
+                        if(tem_pipe(t)){
+                            execultar_pipe(t);
+                        }else{
+                            execultar(t);
+                        }
+                        exit(0);
+
+                      
+                    }
+                    pids_par[n_par++]=pid;
+                 }else{
+                    if(tem_pipe(t)){
+                        execultar_pipe(t);
+                    }else{
+                        execultar(t);
+                    }
+                 }
             }
-    }
             cmd=strtok_r(NULL,";",&saveptr);
         }
-    }
+        for(int i=0;i< n_par; i++){
+            waitpid(pids_par[i],NULL,0);
+        }
+    }    
     return 0;
-}
+}                                                                                                                                                                                                                                                                                                                                                                                                             
